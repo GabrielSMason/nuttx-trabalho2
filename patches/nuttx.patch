@@ -1,0 +1,93 @@
+diff --git a/include/nuttx/sched.h b/include/nuttx/sched.h
+index 75fedb3a55..3704aa9bba 100644
+--- a/include/nuttx/sched.h
++++ b/include/nuttx/sched.h
+@@ -417,6 +417,21 @@ struct stackinfo_s
+                                          /* from the stack.                  */
+ };
+ 
++/* struct deadlock_stats_s **************************************************/
++
++/* Used to report mutex deadlocks refused at lock time */
++
++#ifdef CONFIG_SCHED_DEADLOCK_DETECT
++struct deadlock_stats_s
++{
++  uint32_t  count;                       /* Deadlocks avoided since boot   */
++  uint8_t   len;                         /* Number of tasks in last cycle  */
++  pid_t     pids[CONFIG_SCHED_DEADLOCK_MAXDEPTH + 1]; /* last cycle        */
++  FAR void  *mutex;                      /* Mutex whose lock was refused   */
++  clock_t   ticks;                       /* System tick when it happened   */
++};
++#endif
++
+ /* struct task_join_s *******************************************************/
+ 
+ /* Used to save task join information */
+@@ -1637,6 +1652,35 @@ pid_t nxsched_getppid(void);
+ 
+ size_t nxsched_collect_deadlock(FAR pid_t *pid, size_t count);
+ 
++/****************************************************************************
++ * Name: sched_deadlock_enable
++ *
++ * Description:
++ *   Enable (1) or disable (0) mutex deadlock detection at lock time.
++ *
++ * Returned Value:
++ *   The previous state (0 or 1), or -1 with errno set to EINVAL if
++ *   'enable' is neither 0 nor 1.
++ *
++ ****************************************************************************/
++
++#ifdef CONFIG_SCHED_DEADLOCK_DETECT
++int sched_deadlock_enable(int enable);
++
++/****************************************************************************
++ * Name: sched_deadlock_info
++ *
++ * Description:
++ *   Copy the mutex deadlock statistics to 'info'.
++ *
++ * Returned Value:
++ *   0 on success, or -1 with errno set to EINVAL if 'info' is NULL.
++ *
++ ****************************************************************************/
++
++int sched_deadlock_info(FAR struct deadlock_stats_s *info);
++#endif
++
+ /****************************************************************************
+  * Name: nxsched_dumponexit
+  *
+diff --git a/sched/Kconfig b/sched/Kconfig
+index bebc9f4a32..1e2ccfbd19 100644
+--- a/sched/Kconfig
++++ b/sched/Kconfig
+@@ -805,6 +805,26 @@ config SCHED_WAITPID
+ 		well. Note that SCHED_HAVE_PARENT must be defined in BUILD_KERNEL if
+ 		SCHED_WAITPID is needed.
+ 
++config SCHED_DEADLOCK_DETECT
++	bool "Detect mutex deadlocks at lock time"
++	default n
++	---help---
++		Before a task blocks on a mutex, follow the wait-for chain
++		(mutex -> holder -> mutex the holder waits on -> ...).  If the
++		chain leads back to the calling task, fail with EDEADLK instead
++		of blocking forever.
++
++if SCHED_DEADLOCK_DETECT
++
++config SCHED_DEADLOCK_MAXDEPTH
++	int "Maximum wait-for chain length examined"
++	default 8
++	range 1 32
++	---help---
++		Bounds the time spent with interrupts disabled.
++
++endif # SCHED_DEADLOCK_DETECT
++
+ config SCHED_DUMP_LEAK
+ 	bool "Enable catch task memory leak"
+ 	default n

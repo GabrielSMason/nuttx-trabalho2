@@ -1,0 +1,5 @@
+# NuttX build artifacts
+*.o
+.built
+.depend
+Make.dep

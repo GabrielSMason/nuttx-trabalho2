@@ -1,0 +1,30 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config EXAMPLES_T2
+	tristate "T2 - mutex deadlock detection test"
+	default n
+	---help---
+		Test application for the mutex deadlock detection added to the
+		NuttX kernel (CONFIG_SCHED_DEADLOCK_DETECT).
+
+if EXAMPLES_T2
+
+config EXAMPLES_T2_PROGNAME
+	string "Program name"
+	default "t2"
+	---help---
+		This is the name of the program that will be used when the NSH ELF
+		program is installed.
+
+config EXAMPLES_T2_PRIORITY
+	int "T2 task priority"
+	default 100
+
+config EXAMPLES_T2_STACKSIZE
+	int "T2 stack size"
+	default 4096
+
+endif
