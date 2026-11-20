@@ -91,3 +91,101 @@ index bebc9f4a32..1e2ccfbd19 100644
  config SCHED_DUMP_LEAK
  	bool "Enable catch task memory leak"
  	default n
+diff --git a/sched/semaphore/sem_wait.c b/sched/semaphore/sem_wait.c
+index b1bb8c887c..3216de7f9a 100644
+--- a/sched/semaphore/sem_wait.c
++++ b/sched/semaphore/sem_wait.c
+@@ -36,9 +36,75 @@
+ #include <nuttx/mm/kmap.h>
+ #include <nuttx/signal.h>
+ 
++#include <nuttx/clock.h>
++#include <nuttx/mutex.h>
++
+ #include "sched/sched.h"
+ #include "semaphore/semaphore.h"
+ 
++#ifdef CONFIG_SCHED_DEADLOCK_DETECT
++/****************************************************************************
++ * Private Data
++ ****************************************************************************/
++static bool g_dl_enabled = true;
++static struct deadlock_stats_s g_dl_stats;
++/****************************************************************************
++ * Private Functions
++ ****************************************************************************/
++
++/* Return the TCB of the holder of the mutex 'tcb' is blocked on, or NULL.
++ * Must be called inside a critical section.
++ */
++
++static FAR struct tcb_s *dl_next(FAR struct tcb_s *tcb)
++{
++  FAR sem_t *sem;
++  pid_t holder;
++  
++  if(tcb->task_state != TSTATE_WAIT_SEM)
++  {
++    return NULL;
++  }
++  sem = tcb->waitobj;
++  if (sem == NULL || !NXSEM_IS_MUTEX(sem))
++  {
++    return NULL;
++  }
++  holder = nxmutex_get_holder((FAR mutex_t*)sem);
++  if(holder < 0)
++  {
++    return NULL;
++  }
++
++  return nxsched_get_tcb(holder);
++}
++
++static bool dl_check(FAR struct tcb_s *rtcb, FAR struct tcb_s *htcb, FAR sem_t *sem)
++{
++  FAR struct tcb_s *tcb = htcb;
++
++  for(int depth = 0; tcb != NULL && depth < CONFIG_SCHED_DEADLOCK_MAXDEPTH; depth++)
++  {
++    if (tcb == rtcb)
++    {
++      g_dl_stats.count++;
++      g_dl_stats.mutex = sem;
++      g_dl_stats.ticks = clock_systime_ticks();
++      g_dl_stats.pids[0] = rtcb->pid;
++      g_dl_stats.len = 1;
++    
++      for(tcb = htcb; tcb != NULL && tcb != rtcb && g_dl_stats.len < CONFIG_SCHED_DEADLOCK_MAXDEPTH + 1; tcb = dl_next(tcb))
++      {
++        g_dl_stats.pids[g_dl_stats.len++] = tcb->pid;
++      }
++      return true;
++    }
++    tcb = dl_next(tcb);  
++  }
++  return false;
++}
++ 
++#endif /* CONFIG_SCHED_DEADLOCK_DETECT */
+ /****************************************************************************
+  * Public Functions
+  ****************************************************************************/
+@@ -196,6 +262,17 @@ int nxsem_wait_slow(FAR sem_t *sem)
+       uint8_t prioinherit = sem->flags & SEM_PRIO_MASK;
+ #endif
+ 
++#ifdef CONFIG_SCHED_DEADLOCK_DETECT
++      if(mutex && g_dl_enabled && dl_check(rtcb, htcb, sem))
++        {
++          if (dq_empty(SEM_WAITLIST(sem)))
++            {
++              atomic_and(NXSEM_MHOLDER(sem), ~NXSEM_MBLOCKING_BIT);
++            }
++          leave_critical_section(flags);
++          return -EDEADLK;
++        }
++#endif
+       /* First, verify that the task is not already waiting on a
+        * semaphore
+        */
