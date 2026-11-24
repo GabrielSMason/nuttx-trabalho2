@@ -60,6 +60,22 @@ index 75fedb3a55..3704aa9bba 100644
  /****************************************************************************
   * Name: nxsched_dumponexit
   *
+diff --git a/include/sys/syscall_lookup.h b/include/sys/syscall_lookup.h
+index 09c46e84ba..6a836355d7 100644
+--- a/include/sys/syscall_lookup.h
++++ b/include/sys/syscall_lookup.h
+@@ -46,6 +46,11 @@ SYSCALL_LOOKUP(sched_unlock,               0)
+ SYSCALL_LOOKUP(sched_yield,                0)
+ SYSCALL_LOOKUP(nxsched_get_stackinfo,      2)
+ 
++#ifdef CONFIG_SCHED_DEADLOCK_DETECT
++  SYSCALL_LOOKUP(sched_deadlock_enable,    1)
++  SYSCALL_LOOKUP(sched_deadlock_info,      1)
++#endif
++
+ #ifdef CONFIG_SCHED_BACKTRACE
+   SYSCALL_LOOKUP(sched_backtrace,          4)
+ #endif
 diff --git a/sched/Kconfig b/sched/Kconfig
 index bebc9f4a32..1e2ccfbd19 100644
 --- a/sched/Kconfig
@@ -92,7 +108,7 @@ index bebc9f4a32..1e2ccfbd19 100644
  	bool "Enable catch task memory leak"
  	default n
 diff --git a/sched/semaphore/sem_wait.c b/sched/semaphore/sem_wait.c
-index b1bb8c887c..3216de7f9a 100644
+index b1bb8c887c..16344f4447 100644
 --- a/sched/semaphore/sem_wait.c
 +++ b/sched/semaphore/sem_wait.c
 @@ -36,9 +36,75 @@
@@ -189,3 +205,53 @@ index b1bb8c887c..3216de7f9a 100644
        /* First, verify that the task is not already waiting on a
         * semaphore
         */
+@@ -322,3 +399,39 @@ int nxsem_wait_slow(FAR sem_t *sem)
+   leave_critical_section(flags);
+   return ret;
+ }
++
++#ifdef CONFIG_SCHED_DEADLOCK_DETECT
++int sched_deadlock_enable(int enable)
++{
++  irqstate_t flags;
++  int old;
++
++  if(enable != 0 && enable != 1)
++    { 
++      set_errno(EINVAL);
++      return ERROR;
++    }
++  flags = enter_critical_section();
++  old = g_dl_enabled;
++  g_dl_enabled = enable;
++  leave_critical_section(flags);
++
++  return old;
++}
++
++int sched_deadlock_info(FAR struct deadlock_stats_s *info)
++{
++  irqstate_t flags;
++
++  if(info == NULL)
++    {
++      set_errno(EINVAL);
++      return ERROR;
++    }
++  flags = enter_critical_section();
++  *info = g_dl_stats;
++  leave_critical_section(flags);
++
++  return OK;
++}
++#endif
+diff --git a/syscall/syscall.csv b/syscall/syscall.csv
+index 8a1d685fa4..7e867349d1 100644
+--- a/syscall/syscall.csv
++++ b/syscall/syscall.csv
+@@ -1,3 +1,5 @@
++"sched_deadlock_enable","nuttx/sched.h","defined(CONFIG_SCHED_DEADLOCK_DETECT)","int","int"
++"sched_deadlock_info","nuttx/sched.h","defined(CONFIG_SCHED_DEADLOCK_DETECT)","int","FAR struct deadlock_stats_s *"
+ "_assert","assert.h","","void","FAR const char *","int","FAR const char *","FAR void *"
+ "_exit","unistd.h","","noreturn","int"
+ "accept4","sys/socket.h","defined(CONFIG_NET)","int","int","FAR struct sockaddr *","FAR socklen_t *","int"

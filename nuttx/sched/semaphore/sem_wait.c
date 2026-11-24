@@ -399,3 +399,39 @@ int nxsem_wait_slow(FAR sem_t *sem)
   leave_critical_section(flags);
   return ret;
 }
+
+#ifdef CONFIG_SCHED_DEADLOCK_DETECT
+int sched_deadlock_enable(int enable)
+{
+  irqstate_t flags;
+  int old;
+
+  if(enable != 0 && enable != 1)
+    { 
+      set_errno(EINVAL);
+      return ERROR;
+    }
+  flags = enter_critical_section();
+  old = g_dl_enabled;
+  g_dl_enabled = enable;
+  leave_critical_section(flags);
+
+  return old;
+}
+
+int sched_deadlock_info(FAR struct deadlock_stats_s *info)
+{
+  irqstate_t flags;
+
+  if(info == NULL)
+    {
+      set_errno(EINVAL);
+      return ERROR;
+    }
+  flags = enter_critical_section();
+  *info = g_dl_stats;
+  leave_critical_section(flags);
+
+  return OK;
+}
+#endif
